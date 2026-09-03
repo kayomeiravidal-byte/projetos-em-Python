@@ -9,14 +9,18 @@ logger = logging.getLogger(__name__)
 
 
 class SchedulingService:
-    def __init__(self, rule_id=None):
+    def __init__(self, organization_id, rule_id=None):
+        self.organization_id = organization_id
         if rule_id:
             try:
-                self.rule = SchedulingRule.objects.get(id=rule_id)
+                self.rule = SchedulingRule.objects.get(id=rule_id, organization_id=organization_id)
             except SchedulingRule.DoesNotExist:
                 raise ValidationError(f"Regra de escalonamento id={rule_id} não encontrada.")
         else:
-            self.rule = SchedulingRule.objects.first() or SchedulingRule.objects.create(
+            self.rule = SchedulingRule.objects.filter(
+                organization_id=organization_id
+            ).first() or SchedulingRule.objects.create(
+                organization_id=organization_id,
                 name="Regra Padrão",
                 max_consecutive_days=5,
                 mandatory_rest_days=1,
@@ -35,18 +39,19 @@ class SchedulingService:
             )
 
         if employees is None:
-            employees = list(Employee.objects.filter(is_active=True))
+            employees = list(Employee.objects.filter(organization_id=self.organization_id, is_active=True))
         else:
             employees = list(employees)
 
         if not employees:
             raise ValidationError("Nenhum funcionário ativo encontrado para gerar a escala.")
 
-        shift_types = list(ShiftType.objects.all())
+        shift_types = list(ShiftType.objects.filter(organization_id=self.organization_id))
         if not shift_types:
             raise ValidationError("Nenhum tipo de turno cadastrado.")
 
         Schedule.objects.filter(
+            organization_id=self.organization_id,
             date__range=(start_date, end_date),
             employee__in=employees,
         ).delete()
@@ -162,7 +167,12 @@ class SchedulingService:
                 for shift in shift_types:
                     if solver.Value(x[(emp.id, date_idx, shift.id)]):
                         schedules.append(
-                            Schedule(employee=emp, date=date, shift_type=shift)
+                            Schedule(
+                                organization_id=self.organization_id,
+                                employee=emp,
+                                date=date,
+                                shift_type=shift,
+                            )
                         )
                         break
 
@@ -171,10 +181,10 @@ class SchedulingService:
 
 class ScheduleService:
     @staticmethod
-    def get_calendar_data(start_date, end_date, employee_ids=None):
+    def get_calendar_data(organization_id, start_date, end_date, employee_ids=None):
         logger.debug("Buscando dados de calendário de %s a %s", start_date, end_date)
         qs = (
-            Schedule.objects.filter(date__range=(start_date, end_date))
+            Schedule.objects.filter(organization_id=organization_id, date__range=(start_date, end_date))
             .select_related("employee", "shift_type")
             .order_by("date", "employee__name")
         )
@@ -198,9 +208,9 @@ class ScheduleService:
         return events
 
     @staticmethod
-    def export_schedule_data(start_date, end_date):
+    def export_schedule_data(organization_id, start_date, end_date):
         qs = (
-            Schedule.objects.filter(date__range=(start_date, end_date))
+            Schedule.objects.filter(organization_id=organization_id, date__range=(start_date, end_date))
             .select_related("employee", "shift_type")
             .order_by("employee__name", "date")
         )
@@ -228,25 +238,25 @@ class ScheduleService:
 
     @staticmethod
     @transaction.atomic
-    def update_shift(employee_id, date, shift_type_id):
+    def update_shift(organization_id, employee_id, date, shift_type_id):
         logger.info(
             "Atualizando turno: funcionário=%s, data=%s, turno=%s",
             employee_id, date, shift_type_id,
         )
         try:
-            employee = Employee.objects.get(id=employee_id)
+            employee = Employee.objects.get(id=employee_id, organization_id=organization_id)
         except Employee.DoesNotExist:
             raise ValidationError(f"Funcionário id={employee_id} não encontrado.")
 
         try:
-            shift_type = ShiftType.objects.get(id=shift_type_id)
+            shift_type = ShiftType.objects.get(id=shift_type_id, organization_id=organization_id)
         except ShiftType.DoesNotExist:
             raise ValidationError(f"Tipo de turno id={shift_type_id} não encontrado.")
 
         schedule, created = Schedule.objects.get_or_create(
             employee=employee,
             date=date,
-            defaults={"shift_type": shift_type},
+            defaults={"shift_type": shift_type, "organization_id": organization_id},
         )
         if not created:
             schedule.shift_type = shift_type
@@ -256,7 +266,7 @@ class ScheduleService:
         return schedule
 
     @staticmethod
-    def validate_schedule_generation(start_date, end_date, employee_ids):
+    def validate_schedule_generation(organization_id, start_date, end_date, employee_ids):
         if not start_date or not end_date:
             raise ValidationError("start_date e end_date são obrigatórios.")
 
@@ -272,15 +282,17 @@ class ScheduleService:
 
         if employee_ids:
             active_ids = set(
-                Employee.objects.filter(id__in=employee_ids, is_active=True).values_list("id", flat=True)
+                Employee.objects.filter(
+                    id__in=employee_ids, organization_id=organization_id, is_active=True
+                ).values_list("id", flat=True)
             )
             missing = set(employee_ids) - active_ids
             if missing:
                 raise ValidationError(
                     f"Funcionários não encontrados ou inativos: {sorted(missing)}."
                 )
-            employees = Employee.objects.filter(id__in=employee_ids, is_active=True)
+            employees = Employee.objects.filter(id__in=employee_ids, organization_id=organization_id, is_active=True)
         else:
-            employees = Employee.objects.filter(is_active=True)
+            employees = Employee.objects.filter(organization_id=organization_id, is_active=True)
 
         return start_date, end_date, employees

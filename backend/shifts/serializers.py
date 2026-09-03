@@ -9,6 +9,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "email", "is_active", "hire_date", "created_at", "updated_at"]
         read_only_fields = ["created_at", "updated_at"]
 
+    def validate_email(self, value):
+        # organization_id não é campo do serializer, então o
+        # UniqueTogetherValidator do DRF não roda sozinho pra esse par.
+        request = self.context.get("request")
+        organization_id = getattr(getattr(request, "user", None), "organization_id", None)
+        queryset = Employee.objects.filter(organization_id=organization_id, email=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Já existe um funcionário com este e-mail.")
+        return value
+
 
 class ShiftTypeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,6 +30,17 @@ class ShiftTypeSerializer(serializers.ModelSerializer):
     def validate_color(self, value):
         if not re.match(r"^#[0-9A-Fa-f]{6}$", value):
             raise serializers.ValidationError("Cor hexadecimal inválida. Use o formato #RRGGBB.")
+        return value
+
+    def validate_name(self, value):
+        # Mesma razão do EmployeeSerializer.validate_email.
+        request = self.context.get("request")
+        organization_id = getattr(getattr(request, "user", None), "organization_id", None)
+        queryset = ShiftType.objects.filter(organization_id=organization_id, name=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Já existe um tipo de turno com este nome.")
         return value
 
 

@@ -4,11 +4,12 @@ import pandas as pd
 from django.http import HttpResponse
 from django.shortcuts import render
 from rest_framework import status, viewsets
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from .exceptions import DataAccessError, OptimizationError, ValidationError
 from .models import Employee, Schedule, SchedulingRule, ShiftType
+from .permissions import require_permission
 from .serializers import (
     EmployeeSerializer,
     ExportRequestSerializer,
@@ -24,26 +25,64 @@ logger = logging.getLogger(__name__)
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
-    queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
     filterset_fields = ["is_active"]
     search_fields = ["name", "email"]
     ordering_fields = ["name", "hire_date", "created_at"]
+    required_permissions = {
+        "list": "schedules:read",
+        "retrieve": "schedules:read",
+        "create": "employees:manage",
+        "update": "employees:manage",
+        "partial_update": "employees:manage",
+        "destroy": "employees:manage",
+    }
+
+    def get_queryset(self):
+        return Employee.objects.filter(organization_id=self.request.user.organization_id)
+
+    def perform_create(self, serializer):
+        serializer.save(organization_id=self.request.user.organization_id)
 
 
 class ShiftTypeViewSet(viewsets.ModelViewSet):
-    queryset = ShiftType.objects.all()
     serializer_class = ShiftTypeSerializer
     filterset_fields = ["is_work_shift"]
     search_fields = ["name"]
+    required_permissions = {
+        "list": "schedules:read",
+        "retrieve": "schedules:read",
+        "create": "employees:manage",
+        "update": "employees:manage",
+        "partial_update": "employees:manage",
+        "destroy": "employees:manage",
+    }
+
+    def get_queryset(self):
+        return ShiftType.objects.filter(organization_id=self.request.user.organization_id)
+
+    def perform_create(self, serializer):
+        serializer.save(organization_id=self.request.user.organization_id)
 
 
 class ScheduleViewSet(viewsets.ModelViewSet):
-    queryset = Schedule.objects.select_related("employee", "shift_type").all()
     serializer_class = ScheduleSerializer
     filterset_fields = ["employee", "shift_type", "date"]
     search_fields = ["employee__name"]
     ordering_fields = ["date", "employee__name"]
+    required_permissions = {
+        "list": "schedules:read",
+        "retrieve": "schedules:read",
+        "create": "schedules:write",
+        "update": "schedules:write",
+        "partial_update": "schedules:write",
+        "destroy": "schedules:write",
+    }
+
+    def get_queryset(self):
+        return Schedule.objects.select_related("employee", "shift_type").filter(
+            organization_id=self.request.user.organization_id
+        )
 
     def create(self, request, *args, **kwargs):
         employee_id = request.data.get("employee")
@@ -56,7 +95,9 @@ class ScheduleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            schedule = ScheduleService.update_shift(employee_id, date, shift_type_id)
+            schedule = ScheduleService.update_shift(
+                request.user.organization_id, employee_id, date, shift_type_id
+            )
             return Response(
                 self.get_serializer(schedule).data,
                 status=status.HTTP_201_CREATED,
@@ -71,13 +112,15 @@ class ScheduleViewSet(viewsets.ModelViewSet):
             )
 
     def update(self, request, *args, **kwargs):
-        instance = self.get_object()
+        instance = self.get_object()  # já escopado à organização via get_queryset()
         employee_id = request.data.get("employee", instance.employee_id)
         date = request.data.get("date", str(instance.date))
         shift_type_id = request.data.get("shift_type", instance.shift_type_id)
 
         try:
-            schedule = ScheduleService.update_shift(employee_id, date, shift_type_id)
+            schedule = ScheduleService.update_shift(
+                request.user.organization_id, employee_id, date, shift_type_id
+            )
             return Response(self.get_serializer(schedule).data)
         except ValidationError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -90,12 +133,26 @@ class ScheduleViewSet(viewsets.ModelViewSet):
 
 
 class SchedulingRuleViewSet(viewsets.ModelViewSet):
-    queryset = SchedulingRule.objects.all()
     serializer_class = SchedulingRuleSerializer
     search_fields = ["name"]
+    required_permissions = {
+        "list": "schedules:read",
+        "retrieve": "schedules:read",
+        "create": "rules:manage",
+        "update": "rules:manage",
+        "partial_update": "rules:manage",
+        "destroy": "rules:manage",
+    }
+
+    def get_queryset(self):
+        return SchedulingRule.objects.filter(organization_id=self.request.user.organization_id)
+
+    def perform_create(self, serializer):
+        serializer.save(organization_id=self.request.user.organization_id)
 
 
 @api_view(["POST"])
+@permission_classes([require_permission("schedules:generate")])
 def generate_schedule(request):
     serializer = ScheduleGenerationRequestSerializer(data=request.data)
     if not serializer.is_valid():
@@ -103,10 +160,11 @@ def generate_schedule(request):
 
     try:
         data = serializer.validated_data
+        org_id = request.user.organization_id
         start, end, employees = ScheduleService.validate_schedule_generation(
-            data["start_date"], data["end_date"], data.get("employee_ids") or []
+            org_id, data["start_date"], data["end_date"], data.get("employee_ids") or []
         )
-        service = SchedulingService(data.get("rule_id"))
+        service = SchedulingService(org_id, data.get("rule_id"))
         count = service.generate_schedule(start, end, employees)
         return Response(
             {"message": "Escala gerada com sucesso.", "schedules_created": count},
@@ -125,6 +183,7 @@ def generate_schedule(request):
 
 
 @api_view(["GET"])
+@permission_classes([require_permission("schedules:read")])
 def get_calendar_data(request):
     serializer = ExportRequestSerializer(data=request.query_params)
     if not serializer.is_valid():
@@ -133,7 +192,9 @@ def get_calendar_data(request):
     try:
         data = serializer.validated_data
         employee_ids = request.query_params.getlist("employee_ids") or None
-        events = ScheduleService.get_calendar_data(data["start"], data["end"], employee_ids)
+        events = ScheduleService.get_calendar_data(
+            request.user.organization_id, data["start"], data["end"], employee_ids
+        )
         return Response(events)
     except Exception:
         logger.exception("Erro ao buscar dados de calendário.")
@@ -144,6 +205,7 @@ def get_calendar_data(request):
 
 
 @api_view(["POST"])
+@permission_classes([require_permission("schedules:write")])
 def update_shift(request):
     serializer = ShiftUpdateRequestSerializer(data=request.data)
     if not serializer.is_valid():
@@ -151,7 +213,9 @@ def update_shift(request):
 
     try:
         data = serializer.validated_data
-        schedule = ScheduleService.update_shift(data["employee_id"], data["date"], data["shift_type_id"])
+        schedule = ScheduleService.update_shift(
+            request.user.organization_id, data["employee_id"], data["date"], data["shift_type_id"]
+        )
         return Response(ScheduleSerializer(schedule).data)
     except ValidationError as exc:
         return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -164,6 +228,7 @@ def update_shift(request):
 
 
 @api_view(["GET"])
+@permission_classes([require_permission("export:excel")])
 def export_schedule(request):
     serializer = ExportRequestSerializer(data=request.query_params)
     if not serializer.is_valid():
@@ -171,7 +236,9 @@ def export_schedule(request):
 
     try:
         data = serializer.validated_data
-        schedule_data, _ = ScheduleService.export_schedule_data(data["start"], data["end"])
+        schedule_data, _ = ScheduleService.export_schedule_data(
+            request.user.organization_id, data["start"], data["end"]
+        )
 
         if not schedule_data:
             return Response(
@@ -199,6 +266,7 @@ def export_schedule(request):
 
 
 def calendar_view(request):
+    # Legado, sem autenticação — será substituído pelo frontend React.
     employees = Employee.objects.filter(is_active=True).order_by("name")
     shift_types = ShiftType.objects.all().order_by("name")
     rules = SchedulingRule.objects.all()

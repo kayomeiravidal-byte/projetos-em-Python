@@ -134,6 +134,9 @@ _cors = os.environ.get(
 ).split(",")
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors]
 
+# Mesmo segredo HMAC configurado no auth-service — valida o token localmente.
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me-please-32-bytes-min!!")
+
 # Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
@@ -146,6 +149,13 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
+    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "shifts.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+        "shifts.permissions.HasPermissionCode",
     ],
 }
 

@@ -8,6 +8,9 @@ from rest_framework.test import APITestCase
 from .exceptions import ValidationError
 from .models import Employee, Schedule, SchedulingRule, ShiftType
 from .services import ScheduleService, SchedulingService
+from .test_support import auth_header
+
+ORG_ID = 1
 
 
 # ---------------------------------------------------------------------------
@@ -16,7 +19,7 @@ from .services import ScheduleService, SchedulingService
 
 class EmployeeModelTest(TestCase):
     def _make(self, **kwargs):
-        defaults = {"name": "Alice", "email": "alice@test.com", "hire_date": date.today()}
+        defaults = {"organization_id": ORG_ID, "name": "Alice", "email": "alice@test.com", "hire_date": date.today()}
         defaults.update(kwargs)
         return Employee.objects.create(**defaults)
 
@@ -33,55 +36,66 @@ class EmployeeModelTest(TestCase):
         self.assertIsNotNone(emp.created_at)
         self.assertIsNotNone(emp.updated_at)
 
-    def test_unique_email(self):
+    def test_unique_email_within_organization(self):
         self._make()
         from django.db import IntegrityError
         with self.assertRaises(IntegrityError):
-            Employee.objects.create(name="Bob", email="alice@test.com", hire_date=date.today())
+            Employee.objects.create(
+                organization_id=ORG_ID, name="Bob", email="alice@test.com", hire_date=date.today()
+            )
+
+    def test_same_email_allowed_in_different_organizations(self):
+        self._make()
+        # não deve estourar — e-mail é único por organização, não globalmente
+        Employee.objects.create(
+            organization_id=ORG_ID + 1, name="Bob", email="alice@test.com", hire_date=date.today()
+        )
 
 
 class ShiftTypeModelTest(TestCase):
     def test_str(self):
-        st = ShiftType(name="Dia")
+        st = ShiftType(organization_id=ORG_ID, name="Dia")
         self.assertEqual(str(st), "Dia")
 
     def test_invalid_hex_color_raises(self):
-        st = ShiftType(name="Teste", color="notacolor", is_work_shift=True)
+        st = ShiftType(organization_id=ORG_ID, name="Teste", color="notacolor", is_work_shift=True)
         with self.assertRaises(DjangoValidationError):
             st.full_clean()
 
     def test_valid_hex_color(self):
-        st = ShiftType(name="Dia", color="#4CAF50", is_work_shift=True)
+        st = ShiftType(organization_id=ORG_ID, name="Dia", color="#4CAF50", is_work_shift=True)
         st.full_clean()  # should not raise
 
 
 class ScheduleModelTest(TestCase):
     def setUp(self):
-        self.emp = Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
-        self.shift = ShiftType.objects.create(name="Dia", color="#00ff00", is_work_shift=True)
+        self.emp = Employee.objects.create(
+            organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today()
+        )
+        self.shift = ShiftType.objects.create(organization_id=ORG_ID, name="Dia", color="#00ff00", is_work_shift=True)
 
     def test_str(self):
-        s = Schedule(employee=self.emp, date=date.today(), shift_type=self.shift)
+        s = Schedule(organization_id=ORG_ID, employee=self.emp, date=date.today(), shift_type=self.shift)
         self.assertIn("Alice", str(s))
 
     def test_timestamps_set_on_create(self):
-        s = Schedule.objects.create(employee=self.emp, date=date.today(), shift_type=self.shift)
+        s = Schedule.objects.create(organization_id=ORG_ID, employee=self.emp, date=date.today(), shift_type=self.shift)
         self.assertIsNotNone(s.created_at)
 
     def test_unique_employee_date(self):
-        Schedule.objects.create(employee=self.emp, date=date.today(), shift_type=self.shift)
+        Schedule.objects.create(organization_id=ORG_ID, employee=self.emp, date=date.today(), shift_type=self.shift)
         from django.db import IntegrityError
         with self.assertRaises(IntegrityError):
-            Schedule.objects.create(employee=self.emp, date=date.today(), shift_type=self.shift)
+            Schedule.objects.create(organization_id=ORG_ID, employee=self.emp, date=date.today(), shift_type=self.shift)
 
 
 class SchedulingRuleModelTest(TestCase):
     def test_str(self):
-        rule = SchedulingRule(name="Padrão")
+        rule = SchedulingRule(organization_id=ORG_ID, name="Padrão")
         self.assertEqual(str(rule), "Padrão")
 
     def test_default_values(self):
-        rule = SchedulingRule.objects.create(name="Teste")
+        rule = SchedulingRule.objects.create(organization_id=ORG_ID, name="Teste")
         self.assertEqual(rule.max_consecutive_days, 5)
         self.assertEqual(rule.mandatory_rest_days, 1)
         self.assertEqual(rule.min_employees_per_day, 1)
@@ -95,57 +109,66 @@ class SchedulingRuleModelTest(TestCase):
 
 class ScheduleServiceTest(TestCase):
     def setUp(self):
-        self.emp = Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
-        self.shift = ShiftType.objects.create(name="Dia", color="#00ff00", is_work_shift=True)
+        self.emp = Employee.objects.create(
+            organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today()
+        )
+        self.shift = ShiftType.objects.create(organization_id=ORG_ID, name="Dia", color="#00ff00", is_work_shift=True)
 
     def test_update_shift_creates_new(self):
         today = date.today()
-        schedule = ScheduleService.update_shift(self.emp.id, today, self.shift.id)
+        schedule = ScheduleService.update_shift(ORG_ID, self.emp.id, today, self.shift.id)
         self.assertEqual(schedule.employee, self.emp)
         self.assertEqual(schedule.shift_type, self.shift)
         self.assertEqual(Schedule.objects.count(), 1)
 
     def test_update_shift_updates_existing(self):
         today = date.today()
-        Schedule.objects.create(employee=self.emp, date=today, shift_type=self.shift)
-        new_shift = ShiftType.objects.create(name="Noite", color="#ff0000", is_work_shift=True)
-        schedule = ScheduleService.update_shift(self.emp.id, today, new_shift.id)
+        Schedule.objects.create(organization_id=ORG_ID, employee=self.emp, date=today, shift_type=self.shift)
+        new_shift = ShiftType.objects.create(organization_id=ORG_ID, name="Noite", color="#ff0000", is_work_shift=True)
+        schedule = ScheduleService.update_shift(ORG_ID, self.emp.id, today, new_shift.id)
         self.assertEqual(schedule.shift_type, new_shift)
         self.assertEqual(Schedule.objects.count(), 1)
 
     def test_update_shift_invalid_employee(self):
         with self.assertRaises(ValidationError):
-            ScheduleService.update_shift(9999, date.today(), self.shift.id)
+            ScheduleService.update_shift(ORG_ID, 9999, date.today(), self.shift.id)
 
     def test_update_shift_invalid_shift_type(self):
         with self.assertRaises(ValidationError):
-            ScheduleService.update_shift(self.emp.id, date.today(), 9999)
+            ScheduleService.update_shift(ORG_ID, self.emp.id, date.today(), 9999)
+
+    def test_update_shift_cannot_reach_another_organizations_employee(self):
+        other_emp = Employee.objects.create(
+            organization_id=ORG_ID + 1, name="Carlos", email="c@t.com", hire_date=date.today()
+        )
+        with self.assertRaises(ValidationError):
+            ScheduleService.update_shift(ORG_ID, other_emp.id, date.today(), self.shift.id)
 
     def test_validate_generation_start_after_end(self):
         start = date.today()
         end = start - timedelta(days=1)
         with self.assertRaises(ValidationError):
-            ScheduleService.validate_schedule_generation(start, end, [])
+            ScheduleService.validate_schedule_generation(ORG_ID, start, end, [])
 
     def test_validate_generation_invalid_employee_ids(self):
         with self.assertRaises(ValidationError):
-            ScheduleService.validate_schedule_generation(date.today(), date.today(), [9999])
+            ScheduleService.validate_schedule_generation(ORG_ID, date.today(), date.today(), [9999])
 
     def test_get_calendar_data_empty(self):
         today = date.today()
-        events = ScheduleService.get_calendar_data(today, today)
+        events = ScheduleService.get_calendar_data(ORG_ID, today, today)
         self.assertEqual(events, [])
 
     def test_get_calendar_data_with_schedule(self):
         today = date.today()
-        Schedule.objects.create(employee=self.emp, date=today, shift_type=self.shift)
-        events = ScheduleService.get_calendar_data(today, today)
+        Schedule.objects.create(organization_id=ORG_ID, employee=self.emp, date=today, shift_type=self.shift)
+        events = ScheduleService.get_calendar_data(ORG_ID, today, today)
         self.assertEqual(len(events), 1)
         self.assertIn("Alice", events[0]["title"])
 
     def test_export_schedule_data_empty(self):
         today = date.today()
-        data, dates = ScheduleService.export_schedule_data(today, today)
+        data, dates = ScheduleService.export_schedule_data(ORG_ID, today, today)
         self.assertEqual(data, [])
         self.assertEqual(dates, [])
 
@@ -153,6 +176,7 @@ class ScheduleServiceTest(TestCase):
 class SchedulingServiceTest(TestCase):
     def setUp(self):
         self.rule = SchedulingRule.objects.create(
+            organization_id=ORG_ID,
             name="Teste",
             max_consecutive_days=5,
             mandatory_rest_days=1,
@@ -160,44 +184,52 @@ class SchedulingServiceTest(TestCase):
             min_employees_per_day=1,
             solver_time_limit_seconds=10,
         )
-        ShiftType.objects.create(name="Dia", color="#00ff00", is_work_shift=True)
-        ShiftType.objects.create(name="Folga", color="#cccccc", is_work_shift=False)
-        self.emp1 = Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
-        self.emp2 = Employee.objects.create(name="Bob", email="b@t.com", hire_date=date.today())
+        ShiftType.objects.create(organization_id=ORG_ID, name="Dia", color="#00ff00", is_work_shift=True)
+        ShiftType.objects.create(organization_id=ORG_ID, name="Folga", color="#cccccc", is_work_shift=False)
+        self.emp1 = Employee.objects.create(organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today())
+        self.emp2 = Employee.objects.create(organization_id=ORG_ID, name="Bob", email="b@t.com", hire_date=date.today())
 
     def test_generate_schedule_creates_records(self):
         start = date.today()
         end = start + timedelta(days=6)
-        svc = SchedulingService(rule_id=self.rule.id)
+        svc = SchedulingService(ORG_ID, rule_id=self.rule.id)
         count = svc.generate_schedule(start, end)
         self.assertGreater(count, 0)
         self.assertEqual(Schedule.objects.count(), count)
 
     def test_generate_schedule_no_employees_raises(self):
         Employee.objects.all().update(is_active=False)
-        svc = SchedulingService(rule_id=self.rule.id)
+        svc = SchedulingService(ORG_ID, rule_id=self.rule.id)
         with self.assertRaises(ValidationError):
             svc.generate_schedule(date.today(), date.today() + timedelta(days=6))
 
     def test_generate_schedule_exceeds_max_days(self):
         self.rule.max_schedule_days = 3
         self.rule.save()
-        svc = SchedulingService(rule_id=self.rule.id)
+        svc = SchedulingService(ORG_ID, rule_id=self.rule.id)
         with self.assertRaises(ValidationError):
             svc.generate_schedule(date.today(), date.today() + timedelta(days=10))
 
     def test_invalid_rule_id_raises(self):
         with self.assertRaises(ValidationError):
-            SchedulingService(rule_id=9999)
+            SchedulingService(ORG_ID, rule_id=9999)
+
+    def test_rule_from_another_organization_is_not_reachable(self):
+        other_rule = SchedulingRule.objects.create(organization_id=ORG_ID + 1, name="De outra org")
+        with self.assertRaises(ValidationError):
+            SchedulingService(ORG_ID, rule_id=other_rule.id)
 
 
 # ---------------------------------------------------------------------------
-# API tests
+# API tests — chamadas autenticadas (ver test_support.py)
 # ---------------------------------------------------------------------------
 
 class EmployeeAPITest(APITestCase):
+    def setUp(self):
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
+
     def test_list_employees(self):
-        Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
+        Employee.objects.create(organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today())
         r = self.client.get("/api/employees/")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
 
@@ -206,16 +238,17 @@ class EmployeeAPITest(APITestCase):
         r = self.client.post("/api/employees/", payload, format="json")
         self.assertEqual(r.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Employee.objects.count(), 1)
+        self.assertEqual(Employee.objects.first().organization_id, ORG_ID)
 
     def test_create_employee_duplicate_email(self):
-        Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
+        Employee.objects.create(organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today())
         payload = {"name": "Alice2", "email": "a@t.com", "hire_date": str(date.today()), "is_active": True}
         r = self.client.post("/api/employees/", payload, format="json")
         self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_filter_active_employees(self):
-        Employee.objects.create(name="Active", email="act@t.com", hire_date=date.today(), is_active=True)
-        Employee.objects.create(name="Inactive", email="inact@t.com", hire_date=date.today(), is_active=False)
+        Employee.objects.create(organization_id=ORG_ID, name="Active", email="act@t.com", hire_date=date.today(), is_active=True)
+        Employee.objects.create(organization_id=ORG_ID, name="Inactive", email="inact@t.com", hire_date=date.today(), is_active=False)
         r = self.client.get("/api/employees/?is_active=true")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         names = [e["name"] for e in r.data["results"]]
@@ -224,6 +257,9 @@ class EmployeeAPITest(APITestCase):
 
 
 class ShiftTypeAPITest(APITestCase):
+    def setUp(self):
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
+
     def test_create_shift_type_valid(self):
         payload = {"name": "Dia", "color": "#4CAF50", "is_work_shift": True}
         r = self.client.post("/api/shift-types/", payload, format="json")
@@ -237,12 +273,13 @@ class ShiftTypeAPITest(APITestCase):
 
 class GenerateScheduleAPITest(APITestCase):
     def setUp(self):
-        ShiftType.objects.create(name="Dia", color="#00ff00", is_work_shift=True)
-        ShiftType.objects.create(name="Folga", color="#cccccc", is_work_shift=False)
-        Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
-        Employee.objects.create(name="Bob", email="b@t.com", hire_date=date.today())
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
+        ShiftType.objects.create(organization_id=ORG_ID, name="Dia", color="#00ff00", is_work_shift=True)
+        ShiftType.objects.create(organization_id=ORG_ID, name="Folga", color="#cccccc", is_work_shift=False)
+        Employee.objects.create(organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today())
+        Employee.objects.create(organization_id=ORG_ID, name="Bob", email="b@t.com", hire_date=date.today())
         SchedulingRule.objects.create(
-            name="Teste", max_consecutive_days=5, mandatory_rest_days=1,
+            organization_id=ORG_ID, name="Teste", max_consecutive_days=5, mandatory_rest_days=1,
             avoid_consecutive_nights=False, solver_time_limit_seconds=10,
         )
 
@@ -278,6 +315,9 @@ class GenerateScheduleAPITest(APITestCase):
 
 
 class ExportAPITest(APITestCase):
+    def setUp(self):
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
+
     def test_export_no_data_returns_404(self):
         today = date.today()
         r = self.client.get(f"/api/export/?start={today}&end={today}")
@@ -288,10 +328,10 @@ class ExportAPITest(APITestCase):
         self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_export_with_data(self):
-        emp = Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
-        shift = ShiftType.objects.create(name="Dia", color="#00ff00", is_work_shift=True)
+        emp = Employee.objects.create(organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today())
+        shift = ShiftType.objects.create(organization_id=ORG_ID, name="Dia", color="#00ff00", is_work_shift=True)
         today = date.today()
-        Schedule.objects.create(employee=emp, date=today, shift_type=shift)
+        Schedule.objects.create(organization_id=ORG_ID, employee=emp, date=today, shift_type=shift)
         r = self.client.get(f"/api/export/?start={today}&end={today}")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertIn("spreadsheet", r["Content-Type"])
@@ -299,8 +339,9 @@ class ExportAPITest(APITestCase):
 
 class UpdateShiftAPITest(APITestCase):
     def setUp(self):
-        self.emp = Employee.objects.create(name="Alice", email="a@t.com", hire_date=date.today())
-        self.shift = ShiftType.objects.create(name="Dia", color="#00ff00", is_work_shift=True)
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
+        self.emp = Employee.objects.create(organization_id=ORG_ID, name="Alice", email="a@t.com", hire_date=date.today())
+        self.shift = ShiftType.objects.create(organization_id=ORG_ID, name="Dia", color="#00ff00", is_work_shift=True)
 
     def test_update_shift_creates(self):
         payload = {

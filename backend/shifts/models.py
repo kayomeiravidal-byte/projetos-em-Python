@@ -10,8 +10,10 @@ def validate_hex_color(value):
 
 
 class Employee(models.Model):
+    # Não é ForeignKey: a organização mora no banco do auth-service.
+    organization_id = models.BigIntegerField(null=True, blank=True, db_index=True)
     name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
+    email = models.EmailField()
     is_active = models.BooleanField(default=True)
     hire_date = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -21,13 +23,16 @@ class Employee(models.Model):
         ordering = ["name"]
         verbose_name = "Funcionário"
         verbose_name_plural = "Funcionários"
+        # Único por organização, não globalmente.
+        unique_together = ("organization_id", "email")
 
     def __str__(self):
         return self.name
 
 
 class ShiftType(models.Model):
-    name = models.CharField(max_length=50, unique=True)
+    organization_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=50)
     color = models.CharField(max_length=7, default="#ffffff", validators=[validate_hex_color])
     is_work_shift = models.BooleanField(default=True)
 
@@ -35,12 +40,14 @@ class ShiftType(models.Model):
         ordering = ["name"]
         verbose_name = "Tipo de Turno"
         verbose_name_plural = "Tipos de Turno"
+        unique_together = ("organization_id", "name")
 
     def __str__(self):
         return self.name
 
 
 class Schedule(models.Model):
+    organization_id = models.BigIntegerField(null=True, blank=True, db_index=True)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="schedules")
     date = models.DateField()
     shift_type = models.ForeignKey(ShiftType, on_delete=models.CASCADE, related_name="schedules")
@@ -55,6 +62,7 @@ class Schedule(models.Model):
         indexes = [
             models.Index(fields=["date"]),
             models.Index(fields=["employee", "date"]),
+            models.Index(fields=["organization_id"]),
         ]
 
     def __str__(self):
@@ -62,6 +70,7 @@ class Schedule(models.Model):
 
 
 class SchedulingRule(models.Model):
+    organization_id = models.BigIntegerField(null=True, blank=True, db_index=True)
     name = models.CharField(max_length=100)
     max_consecutive_days = models.PositiveIntegerField(
         default=5,

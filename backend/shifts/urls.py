@@ -4,10 +4,11 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r"employees", views.EmployeeViewSet)
-router.register(r"shift-types", views.ShiftTypeViewSet)
-router.register(r"schedules", views.ScheduleViewSet)
-router.register(r"scheduling-rules", views.SchedulingRuleViewSet)
+# basename explícito: os ViewSets não têm mais `.queryset` de classe.
+router.register(r"employees", views.EmployeeViewSet, basename="employee")
+router.register(r"shift-types", views.ShiftTypeViewSet, basename="shifttype")
+router.register(r"schedules", views.ScheduleViewSet, basename="schedule")
+router.register(r"scheduling-rules", views.SchedulingRuleViewSet, basename="schedulingrule")
 
 urlpatterns = [
     # Custom actions before the router to avoid interception
