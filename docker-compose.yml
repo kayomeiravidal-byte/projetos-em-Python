@@ -9,6 +9,14 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+      # Cria também o database "auth" (além do "scheduling" via POSTGRES_DB)
+      # no primeiro start — mesmo container Postgres para os dois serviços.
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduling"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: ./backend
@@ -20,11 +28,24 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - ./backend:/app
 
-  # auth-service e frontend entram aqui quando existirem (próximas fases)
+  auth-service:
+    build: ./auth-service
+    environment:
+      DATABASE_URL: postgres://scheduling:scheduling@db:5432/auth
+      JWT_SECRET: dev-secret-change-me-please-32-bytes-min!!
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # frontend entra aqui quando existir (próxima fase)
 
 volumes:
   db_data:
