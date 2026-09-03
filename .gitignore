@@ -53,3 +53,8 @@ build/
 node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Java / Maven (auth-service)
+auth-service/target/
+*.class
+.mvn/
