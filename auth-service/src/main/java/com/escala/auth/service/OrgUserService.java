@@ -47,10 +47,11 @@ public class OrgUserService {
 
     @Transactional
     public OrgUserResponse create(AuthenticatedUser caller, CreateOrgUserRequest request) {
+        // Checa autorização de papel antes de revelar se o e-mail já existe.
+        Role targetRole = requireRoleBelowCaller(caller, request.role());
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException("Já existe uma conta com este e-mail.");
         }
-        Role targetRole = requireRoleBelowCaller(caller, request.role());
 
         User user = new User(
                 organizationRepository.getReferenceById(caller.organizationId()),

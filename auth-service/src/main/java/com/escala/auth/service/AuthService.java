@@ -28,6 +28,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -42,6 +43,13 @@ public class AuthService {
     private final JwtCodec jwtCodec;
     private final AppProperties properties;
 
+    // Hash "de mentira" com o mesmo custo computacional de um hash real,
+    // usado quando o e-mail não existe — sem isso, uma requisição pra um
+    // e-mail inexistente retorna quase instantaneamente enquanto uma senha
+    // errada pra um e-mail real demora o tempo do PBKDF2, e essa diferença
+    // de tempo permite enumerar e-mails cadastrados só medindo a resposta.
+    private final String dummyPasswordHash;
+
     public AuthService(OrganizationRepository organizationRepository, RoleRepository roleRepository,
                         UserRepository userRepository, RefreshTokenRepository refreshTokenRepository,
                         PasswordHasher passwordHasher, JwtCodec jwtCodec, AppProperties properties) {
@@ -52,6 +60,7 @@ public class AuthService {
         this.passwordHasher = passwordHasher;
         this.jwtCodec = jwtCodec;
         this.properties = properties;
+        this.dummyPasswordHash = passwordHasher.hash(UUID.randomUUID().toString());
     }
 
     @Transactional
@@ -73,14 +82,17 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email())
-                .filter(User::isActive)
-                .orElseThrow(InvalidCredentialsException::new);
+        Optional<User> maybeUser = userRepository.findByEmail(request.email()).filter(User::isActive);
 
-        if (!passwordHasher.matches(request.password(), user.getPasswordHash())) {
+        // Roda o PBKDF2 sempre, mesmo se o usuário não existir — contra
+        // ataque de timing (ver comentário no campo dummyPasswordHash).
+        String hashToVerify = maybeUser.map(User::getPasswordHash).orElse(dummyPasswordHash);
+        boolean passwordMatches = passwordHasher.matches(request.password(), hashToVerify);
+
+        if (maybeUser.isEmpty() || !passwordMatches) {
             throw new InvalidCredentialsException();
         }
-        return issueTokens(user);
+        return issueTokens(maybeUser.get());
     }
 
     @Transactional

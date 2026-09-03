@@ -19,7 +19,8 @@ import java.util.Base64;
 public class PasswordHasher {
 
     private static final String ALGORITHM = "PBKDF2WithHmacSHA256";
-    private static final int ITERATIONS = 210_000;
+    // OWASP recomenda >= 600.000 iterações para PBKDF2-HMAC-SHA256.
+    private static final int ITERATIONS = 600_000;
     private static final int KEY_LENGTH_BITS = 256;
     private static final int SALT_LENGTH_BYTES = 16;
 
