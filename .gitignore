@@ -27,9 +27,11 @@ staticfiles/
 .env.local
 .env.*.local
 
-# IDE
+# IDE / local tooling
 .vscode/
 .idea/
+.claude/
+.github/
 *.swp
 *.swo
 *~

@@ -32,6 +32,11 @@ compartilhada), sem depender dele estar no ar a cada requisição.
 - **Geração automática de escala** via solver de otimização (CP-SAT/OR-Tools),
   respeitando limite de dias consecutivos, descanso obrigatório e mínimo de
   funcionários por dia.
+- **Calendário interativo** (drag-and-drop) para ajustar turnos manualmente.
+- **Catálogo de tipos de turno e de serviços**, cada um com horário de
+  início/fim.
+- **Gestão de funcionários e de usuários da organização**, respeitando a
+  hierarquia de papéis na hora de criar/editar contas.
 - **Exportação para Excel** com validações automáticas.
 
 ## Status
@@ -40,13 +45,13 @@ compartilhada), sem depender dele estar no ar a cada requisição.
 |---|---|
 | [auth-service/](auth-service) | Funcional — registro, login, refresh, logout, RBAC hierárquico |
 | [backend/](backend) | Funcional — API REST autenticada e isolada por organização |
-| [frontend/](frontend) | Em construção |
+| [frontend/](frontend) | Funcional — SPA completa consumindo as duas APIs |
 
 ## Stack
 
 - **auth-service**: Java 21 + Spring Boot 4, Flyway, Postgres (Neon)
 - **backend**: Django 6 + Django REST Framework, OR-Tools, pandas/openpyxl, Postgres (Neon)
-- **frontend**: React + Vite + TypeScript + MUI
+- **frontend**: React + Vite + TypeScript + MUI, React Query, FullCalendar
 
 ## Rodando localmente (os 3 serviços)
 
@@ -70,6 +75,17 @@ curl -X POST http://localhost:8081/api/auth/register \
 # 2. Usa o accessToken retornado para acessar o backend
 curl http://localhost:8000/api/employees/ -H "Authorization: Bearer <accessToken>"
 ```
+
+### Frontend
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Abre em `http://localhost:5173` — espera o `auth-service` e o `backend` no ar.
 
 ### Só o backend, sem Docker
 
@@ -111,8 +127,12 @@ Revisão dedicada no `auth-service`, com testes de regressão para cada item:
 
 - `auth-service`: 41 testes JUnit (`mvn test`) — hashing, JWT, hierarquia de
   papéis, fluxo completo de login/refresh/logout.
-- `backend`: 53 testes Django (`python manage.py test shifts`) — modelos,
+- `backend`: 63 testes Django (`python manage.py test shifts`) — modelos,
   serviços, autenticação, autorização e isolamento entre organizações.
+- `frontend`: build de produção validado (`npm run build`) e fluxo completo
+  testado num navegador real (registro → login → CRUD → geração de escala)
+  via Playwright em container Docker, já que este ambiente de desenvolvimento
+  não tem navegador nem Node instalados localmente.
 
 ## Deploy (gratuito)
 
@@ -132,7 +152,7 @@ manter o projeto 100% sem custo.
 - [x] Reorganizar o repositório em 3 serviços
 - [x] `auth-service`: modelo de usuários/papéis/permissões, JWT e RBAC do zero
 - [x] Proteger as rotas do `backend` validando o JWT do `auth-service`
-- [ ] `frontend`: login, calendário interativo, gestão de funcionários
+- [x] `frontend`: login, calendário interativo, gestão de funcionários
 - [ ] Deploy dos 3 serviços
 
 ## Licença

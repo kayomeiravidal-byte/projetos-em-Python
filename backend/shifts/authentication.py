@@ -6,9 +6,6 @@ from .jwt_codec import JwtError, decode_and_verify
 
 
 class RemoteUser:
-    """Usuário autenticado a partir dos claims do JWT — não é uma linha do
-    banco local, esses usuários vivem no banco do auth-service."""
-
     is_authenticated = True
 
     def __init__(self, claims: dict):
@@ -40,5 +37,4 @@ class JWTAuthentication(BaseAuthentication):
         return (RemoteUser(claims), token)
 
     def authenticate_header(self, request):
-        # Sem isso, o DRF responde 403 em vez de 401 sem token.
         return "Bearer"

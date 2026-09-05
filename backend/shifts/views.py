@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from .exceptions import DataAccessError, OptimizationError, ValidationError
-from .models import Employee, Schedule, SchedulingRule, ShiftType
+from .models import Employee, Schedule, SchedulingRule, Service, ShiftType
 from .permissions import require_permission
 from .serializers import (
     EmployeeSerializer,
@@ -16,6 +16,7 @@ from .serializers import (
     ScheduleGenerationRequestSerializer,
     ScheduleSerializer,
     SchedulingRuleSerializer,
+    ServiceSerializer,
     ShiftTypeSerializer,
     ShiftUpdateRequestSerializer,
 )
@@ -60,6 +61,25 @@ class ShiftTypeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return ShiftType.objects.filter(organization_id=self.request.user.organization_id)
+
+    def perform_create(self, serializer):
+        serializer.save(organization_id=self.request.user.organization_id)
+
+
+class ServiceViewSet(viewsets.ModelViewSet):
+    serializer_class = ServiceSerializer
+    search_fields = ["name"]
+    required_permissions = {
+        "list": "schedules:read",
+        "retrieve": "schedules:read",
+        "create": "employees:manage",
+        "update": "employees:manage",
+        "partial_update": "employees:manage",
+        "destroy": "employees:manage",
+    }
+
+    def get_queryset(self):
+        return Service.objects.filter(organization_id=self.request.user.organization_id)
 
     def perform_create(self, serializer):
         serializer.save(organization_id=self.request.user.organization_id)
@@ -266,7 +286,6 @@ def export_schedule(request):
 
 
 def calendar_view(request):
-    # Legado, sem autenticação — será substituído pelo frontend React.
     employees = Employee.objects.filter(is_active=True).order_by("name")
     shift_types = ShiftType.objects.all().order_by("name")
     rules = SchedulingRule.objects.all()

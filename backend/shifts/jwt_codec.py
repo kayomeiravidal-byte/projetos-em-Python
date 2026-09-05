@@ -1,4 +1,3 @@
-"""JWT (HS256) feito à mão — espelha auth-service/.../security/JwtCodec.java."""
 import base64
 import hashlib
 import hmac
@@ -7,7 +6,7 @@ import time
 
 
 class JwtError(Exception):
-    """Token ausente, malformado, com assinatura inválida ou expirado."""
+    pass
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -24,7 +23,6 @@ def _sign(signing_input: str, secret: bytes) -> bytes:
 
 
 def encode(claims: dict, secret: str) -> str:
-    """Usado só em testes; em produção quem emite o token é o auth-service."""
     header = {"alg": "HS256", "typ": "JWT"}
     header_segment = _b64url_encode(json.dumps(header).encode("utf-8"))
     payload_segment = _b64url_encode(json.dumps(claims).encode("utf-8"))

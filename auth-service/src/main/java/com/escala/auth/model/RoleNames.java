@@ -2,10 +2,6 @@ package com.escala.auth.model;
 
 import java.util.List;
 
-/**
- * Hierarquia fixa de papéis: ADMIN > SUPERVISOR > LIDER > FUNCIONARIO.
- * Um papel só pode criar/editar usuários de um papel estritamente abaixo do seu.
- */
 public final class RoleNames {
 
     public static final String ADMIN = "ADMIN";

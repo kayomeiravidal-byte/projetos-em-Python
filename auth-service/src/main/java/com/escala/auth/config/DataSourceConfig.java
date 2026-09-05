@@ -10,12 +10,6 @@ import javax.sql.DataSource;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-/**
- * Aceita DATABASE_URL no formato postgres://user:senha@host:porta/banco
- * (o formato que o Neon fornece direto no painel) e converte para uma
- * DataSource JDBC. Sem isso, seria preciso reformatar a URL manualmente
- * a cada deploy — mesma ideia do dj_database_url usado no backend Django.
- */
 @Configuration
 public class DataSourceConfig {
 

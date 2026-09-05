@@ -14,11 +14,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 
-/**
- * Codificação/decodificação de JWT (HS256) feita à mão: cabeçalho e payload
- * são serializados em JSON, base64url-codificados e assinados com
- * javax.crypto.Mac — sem bibliotecas de JWT prontas (jjwt, nimbus-jose etc).
- */
 @Component
 public class JwtCodec {
 

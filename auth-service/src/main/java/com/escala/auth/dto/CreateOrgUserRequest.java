@@ -5,9 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record CreateOrgUserRequest(
-        @NotBlank String name,
-        @Email @NotBlank String email,
-        @NotBlank @Size(min = 8, message = "A senha precisa ter pelo menos 8 caracteres.") String password,
+        @NotBlank @Size(max = 150) String name,
+        @Email @NotBlank @Size(max = 255) String email,
+        @NotBlank @Size(min = 8, max = 128, message = "A senha precisa ter pelo menos 8 caracteres.") String password,
         @NotBlank String role
 ) {
 }

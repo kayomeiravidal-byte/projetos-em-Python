@@ -68,12 +68,6 @@ class AuthServiceTest {
                 refreshTokenRepository, passwordHasher, jwtCodec, properties);
     }
 
-    // Os builders abaixo criam fixtures "genéricas" reaproveitadas por vários
-    // testes; nem todo teste exercita todos os getters stubados aqui (ex.:
-    // um login que falha antes de chegar em issueTokens() nunca chama
-    // getRole()/getPermissions()) — por isso os stubs são lenient(), senão o
-    // modo estrito do Mockito reclamaria de "stub não utilizado".
-
     private Role roleWithPermissions(String name, String... codes) {
         Role role = mock(Role.class);
         lenient().when(role.getName()).thenReturn(name);
@@ -104,8 +98,6 @@ class AuthServiceTest {
         lenient().when(org.getName()).thenReturn(name);
         return org;
     }
-
-    // ---- register ----
 
     @Test
     void registerCreatesOrganizationAndAdminAndReturnsTokens() {
@@ -138,8 +130,6 @@ class AuthServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         verify(organizationRepository, never()).save(any());
     }
-
-    // ---- login ----
 
     @Test
     void loginSucceedsWithCorrectPassword() {
@@ -188,9 +178,6 @@ class AuthServiceTest {
 
     @Test
     void loginRunsPasswordHashingEvenWhenEmailDoesNotExist() {
-        // Regressão do ataque de timing: sem o fix, essa chamada retornaria
-        // sem nunca invocar passwordHasher.matches(), permitindo enumerar
-        // e-mails cadastrados só medindo o tempo de resposta.
         when(userRepository.findByEmail("ninguem@padaria.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("ninguem@padaria.com", "qualquer-coisa")))
@@ -198,8 +185,6 @@ class AuthServiceTest {
 
         verify(passwordHasher).matches(eq("qualquer-coisa"), anyString());
     }
-
-    // ---- refresh & logout ----
 
     @Test
     void refreshRotatesTokenAndRevokesOld() {

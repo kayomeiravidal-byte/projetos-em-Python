@@ -12,12 +12,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Lê o header Authorization: Bearer, valida o JWT via JwtCodec e anexa um
- * AuthenticatedUser como atributo da requisição. Não decide sozinho se a
- * rota exige autenticação — quem barra o acesso é o PermissionInterceptor
- * (ou o próprio controller, para rotas que só exigem "estar logado").
- */
 @Component
 public class AuthenticationFilter implements Filter {
 
@@ -41,7 +35,6 @@ public class AuthenticationFilter implements Filter {
                 Map<String, Object> claims = jwtCodec.decodeAndVerify(token);
                 request.setAttribute(REQUEST_ATTRIBUTE, toAuthenticatedUser(claims));
             } catch (JwtException ignored) {
-                // token ausente/expirado/inválido: segue sem usuário autenticado
             }
         }
 

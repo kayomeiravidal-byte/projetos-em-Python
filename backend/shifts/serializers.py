@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from .models import Employee, ShiftType, Schedule, SchedulingRule
+from .models import Employee, ShiftType, Schedule, SchedulingRule, Service
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
@@ -10,8 +10,6 @@ class EmployeeSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at"]
 
     def validate_email(self, value):
-        # organization_id não é campo do serializer, então o
-        # UniqueTogetherValidator do DRF não roda sozinho pra esse par.
         request = self.context.get("request")
         organization_id = getattr(getattr(request, "user", None), "organization_id", None)
         queryset = Employee.objects.filter(organization_id=organization_id, email=value)
@@ -25,7 +23,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 class ShiftTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShiftType
-        fields = ["id", "name", "color", "is_work_shift"]
+        fields = ["id", "name", "color", "is_work_shift", "start_time", "end_time"]
 
     def validate_color(self, value):
         if not re.match(r"^#[0-9A-Fa-f]{6}$", value):
@@ -33,7 +31,6 @@ class ShiftTypeSerializer(serializers.ModelSerializer):
         return value
 
     def validate_name(self, value):
-        # Mesma razão do EmployeeSerializer.validate_email.
         request = self.context.get("request")
         organization_id = getattr(getattr(request, "user", None), "organization_id", None)
         queryset = ShiftType.objects.filter(organization_id=organization_id, name=value)
@@ -41,6 +38,22 @@ class ShiftTypeSerializer(serializers.ModelSerializer):
             queryset = queryset.exclude(pk=self.instance.pk)
         if queryset.exists():
             raise serializers.ValidationError("Já existe um tipo de turno com este nome.")
+        return value
+
+
+class ServiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Service
+        fields = ["id", "name", "start_time", "end_time"]
+
+    def validate_name(self, value):
+        request = self.context.get("request")
+        organization_id = getattr(getattr(request, "user", None), "organization_id", None)
+        queryset = Service.objects.filter(organization_id=organization_id, name=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Já existe um serviço com este nome.")
         return value
 
 

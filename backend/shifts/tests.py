@@ -6,16 +6,12 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from .exceptions import ValidationError
-from .models import Employee, Schedule, SchedulingRule, ShiftType
+from .models import Employee, Schedule, SchedulingRule, Service, ShiftType
 from .services import ScheduleService, SchedulingService
 from .test_support import auth_header
 
 ORG_ID = 1
 
-
-# ---------------------------------------------------------------------------
-# Model tests
-# ---------------------------------------------------------------------------
 
 class EmployeeModelTest(TestCase):
     def _make(self, **kwargs):
@@ -46,7 +42,6 @@ class EmployeeModelTest(TestCase):
 
     def test_same_email_allowed_in_different_organizations(self):
         self._make()
-        # não deve estourar — e-mail é único por organização, não globalmente
         Employee.objects.create(
             organization_id=ORG_ID + 1, name="Bob", email="alice@test.com", hire_date=date.today()
         )
@@ -65,6 +60,39 @@ class ShiftTypeModelTest(TestCase):
     def test_valid_hex_color(self):
         st = ShiftType(organization_id=ORG_ID, name="Dia", color="#4CAF50", is_work_shift=True)
         st.full_clean()  # should not raise
+
+    def test_start_and_end_time_optional(self):
+        st = ShiftType.objects.create(organization_id=ORG_ID, name="Dia")
+        self.assertIsNone(st.start_time)
+        self.assertIsNone(st.end_time)
+
+    def test_start_and_end_time_saved(self):
+        st = ShiftType.objects.create(
+            organization_id=ORG_ID, name="Manhã", start_time="06:00", end_time="14:00"
+        )
+        st.refresh_from_db()
+        self.assertEqual(str(st.start_time), "06:00:00")
+        self.assertEqual(str(st.end_time), "14:00:00")
+
+
+class ServiceModelTest(TestCase):
+    def test_str(self):
+        service = Service(organization_id=ORG_ID, name="Caixa")
+        self.assertEqual(str(service), "Caixa")
+
+    def test_start_and_end_time_saved(self):
+        service = Service.objects.create(
+            organization_id=ORG_ID, name="Estoque", start_time="08:00", end_time="12:00"
+        )
+        service.refresh_from_db()
+        self.assertEqual(str(service.start_time), "08:00:00")
+        self.assertEqual(str(service.end_time), "12:00:00")
+
+    def test_unique_name_within_organization(self):
+        Service.objects.create(organization_id=ORG_ID, name="Caixa")
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            Service.objects.create(organization_id=ORG_ID, name="Caixa")
 
 
 class ScheduleModelTest(TestCase):
@@ -102,10 +130,6 @@ class SchedulingRuleModelTest(TestCase):
         self.assertEqual(rule.max_schedule_days, 90)
         self.assertEqual(rule.solver_time_limit_seconds, 30)
 
-
-# ---------------------------------------------------------------------------
-# Service tests
-# ---------------------------------------------------------------------------
 
 class ScheduleServiceTest(TestCase):
     def setUp(self):
@@ -220,10 +244,6 @@ class SchedulingServiceTest(TestCase):
             SchedulingService(ORG_ID, rule_id=other_rule.id)
 
 
-# ---------------------------------------------------------------------------
-# API tests — chamadas autenticadas (ver test_support.py)
-# ---------------------------------------------------------------------------
-
 class EmployeeAPITest(APITestCase):
     def setUp(self):
         self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
@@ -269,6 +289,42 @@ class ShiftTypeAPITest(APITestCase):
         payload = {"name": "Erro", "color": "notacolor", "is_work_shift": True}
         r = self.client.post("/api/shift-types/", payload, format="json")
         self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_shift_type_with_times(self):
+        payload = {"name": "Manhã", "color": "#4CAF50", "is_work_shift": True,
+                   "start_time": "06:00", "end_time": "14:00"}
+        r = self.client.post("/api/shift-types/", payload, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(r.data["start_time"], "06:00:00")
+        self.assertEqual(r.data["end_time"], "14:00:00")
+
+
+class ServiceAPITest(APITestCase):
+    def setUp(self):
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="ADMIN"))
+
+    def test_list_services(self):
+        Service.objects.create(organization_id=ORG_ID, name="Caixa")
+        r = self.client.get("/api/services/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(r.data["results"]), 1)
+
+    def test_create_service_with_times(self):
+        payload = {"name": "Estoque", "start_time": "08:00", "end_time": "12:00"}
+        r = self.client.post("/api/services/", payload, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(r.data["start_time"], "08:00:00")
+        self.assertEqual(Service.objects.first().organization_id, ORG_ID)
+
+    def test_create_service_duplicate_name(self):
+        Service.objects.create(organization_id=ORG_ID, name="Caixa")
+        r = self.client.post("/api/services/", {"name": "Caixa"}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_service_requires_permission(self):
+        self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_ID, role="FUNCIONARIO"))
+        r = self.client.post("/api/services/", {"name": "Caixa"}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class GenerateScheduleAPITest(APITestCase):

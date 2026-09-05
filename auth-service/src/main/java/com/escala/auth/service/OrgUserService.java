@@ -18,11 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * CRUD de usuários sempre restrito à organização de quem chama, aplicando a
- * regra de hierarquia: ADMIN > SUPERVISOR > LIDER > FUNCIONARIO — só é
- * possível criar/editar alguém de um papel estritamente abaixo do próprio.
- */
 @Service
 public class OrgUserService {
 
@@ -47,7 +42,6 @@ public class OrgUserService {
 
     @Transactional
     public OrgUserResponse create(AuthenticatedUser caller, CreateOrgUserRequest request) {
-        // Checa autorização de papel antes de revelar se o e-mail já existe.
         Role targetRole = requireRoleBelowCaller(caller, request.role());
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException("Já existe uma conta com este e-mail.");

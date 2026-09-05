@@ -72,7 +72,6 @@ class AuthorizationTest(APITestCase):
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_generate_schedule_requires_generate_permission(self):
-        # LIDER tem schedules:write mas não schedules:generate
         self.client.credentials(HTTP_AUTHORIZATION=auth_header(organization_id=ORG_A, role="LIDER"))
         r = self.client.post(
             "/api/schedules/generate/",

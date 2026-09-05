@@ -7,11 +7,6 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
-/**
- * Permite que controllers recebam um parâmetro AuthenticatedUser diretamente
- * (populado pelo AuthenticationFilter). Vem null se a requisição não trouxer
- * um JWT válido.
- */
 public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolver {
 
     @Override

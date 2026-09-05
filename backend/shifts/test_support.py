@@ -1,4 +1,3 @@
-"""Gera tokens JWT válidos pra simular requisições autenticadas nos testes."""
 import time
 
 from django.conf import settings

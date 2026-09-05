@@ -76,7 +76,6 @@ class SchedulingService:
         max_consec = self.rule.max_consecutive_days
         min_per_day = self.rule.min_employees_per_day
 
-        # Variables: x[(emp_id, date_idx, shift_id)] = 1 if assigned
         x = {}
         work_vars = {}
         for emp in employees:
@@ -88,19 +87,15 @@ class SchedulingService:
                     x[(emp.id, date_idx, shift.id)] = model.NewBoolVar(
                         f"x_{emp.id}_{date_idx}_{shift.id}"
                     )
-                # Exactly one shift per employee per day
                 model.Add(sum(x[(emp.id, date_idx, s.id)] for s in shift_types) == 1)
-                # work indicator = sum of is_work_shift slots
                 work_shifts = [s for s in shift_types if s.is_work_shift]
                 model.Add(work == sum(x[(emp.id, date_idx, s.id)] for s in work_shifts))
 
-        # Max consecutive work days (sliding window)
         for emp in employees:
             for i in range(n_dates - max_consec):
                 window = work_vars[emp.id][i : i + max_consec + 1]
                 model.Add(sum(window) <= max_consec)
 
-        # Mandatory rest after max consecutive work
         rest = self.rule.mandatory_rest_days
         for emp in employees:
             for i in range(n_dates - max_consec - rest + 1):
@@ -111,13 +106,11 @@ class SchedulingService:
                 model.Add(sum(consecutive_work) < max_consec).OnlyEnforceIf(all_work.Not())
                 model.Add(sum(rest_days) == 0).OnlyEnforceIf(all_work)
 
-        # Minimum employees working each day
         for date_idx in range(n_dates):
             model.Add(
                 sum(work_vars[emp.id][date_idx] for emp in employees) >= min_per_day
             )
 
-        # Avoid consecutive night shifts
         if self.rule.avoid_consecutive_nights:
             night_shift = next(
                 (s for s in shift_types if "noite" in s.name.lower() or "night" in s.name.lower()),
@@ -132,7 +125,6 @@ class SchedulingService:
                             <= 1
                         )
 
-        # Objective: minimize spread of total work days across employees
         total_work = []
         for emp in employees:
             total = model.NewIntVar(0, n_dates, f"total_{emp.id}")

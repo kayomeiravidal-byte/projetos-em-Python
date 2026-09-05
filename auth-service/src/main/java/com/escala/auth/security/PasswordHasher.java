@@ -10,16 +10,10 @@ import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
 
-/**
- * Hashing de senha implementado com as primitivas de criptografia puras do
- * JDK (PBKDF2WithHmacSHA256) — sem BCryptPasswordEncoder do Spring Security
- * nem nenhuma biblioteca de hashing pronta.
- */
 @Component
 public class PasswordHasher {
 
     private static final String ALGORITHM = "PBKDF2WithHmacSHA256";
-    // OWASP recomenda >= 600.000 iterações para PBKDF2-HMAC-SHA256.
     private static final int ITERATIONS = 600_000;
     private static final int KEY_LENGTH_BITS = 256;
     private static final int SALT_LENGTH_BYTES = 16;

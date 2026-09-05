@@ -11,14 +11,12 @@ SECRET_KEY = os.environ.get(
     "django-insecure-557j9gb6&kyvykib^o=hut&1ltrr$6s+u8pu8a)(i_2@f3ezk9",
 )
 
-# Render define a env RENDER=true em produção; o padrão passa a ser DEBUG=False.
 _debug_default = "False" if os.environ.get("RENDER") else "True"
 DEBUG = os.environ.get("DEBUG", _debug_default).lower() in ("true", "1", "yes")
 
 _allowed = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 ALLOWED_HOSTS = [h.strip() for h in _allowed] + [".app.github.dev", ".onrender.com"]
 
-# Render injeta o hostname público do serviço em RENDER_EXTERNAL_HOSTNAME
 _render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if _render_host:
     ALLOWED_HOSTS.append(_render_host)
@@ -76,7 +74,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "scheduling_system.wsgi.application"
 
-# Database — SQLite padrão, PostgreSQL via DATABASE_URL em produção
 _db_url = os.environ.get("DATABASE_URL", "")
 if _db_url.startswith("postgres"):
     try:
@@ -107,9 +104,6 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# WhiteNoise: serve estáticos em produção.
-# USE_FINDERS=True permite servir direto dos apps/pacotes, sem depender de
-# rodar `collectstatic` como passo separado de build.
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
@@ -120,24 +114,20 @@ WHITENOISE_USE_FINDERS = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Segurança em produção (atrás do proxy HTTPS do Render)
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True").lower() in ("true", "1", "yes")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
-# CORS
 _cors = os.environ.get(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173",
 ).split(",")
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors]
 
-# Mesmo segredo HMAC configurado no auth-service — valida o token localmente.
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me-please-32-bytes-min!!")
 
-# Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
@@ -159,7 +149,6 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Logging
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

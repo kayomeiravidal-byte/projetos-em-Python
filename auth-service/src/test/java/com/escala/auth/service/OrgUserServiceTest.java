@@ -53,7 +53,6 @@ class OrgUserServiceTest {
 
     private Role roleFixture(String name) {
         Role role = mock(Role.class);
-        // lenient: nem todo teste chega a ler o nome do papel de volta.
         lenient().when(role.getName()).thenReturn(name);
         return role;
     }
@@ -61,8 +60,6 @@ class OrgUserServiceTest {
     private AuthenticatedUser caller(String role) {
         return new AuthenticatedUser(1L, 10L, "caller@padaria.com", role, List.of("users:manage"));
     }
-
-    // ---- hierarquia: quem pode criar quem ----
 
     @ParameterizedTest
     @CsvSource({
@@ -108,8 +105,6 @@ class OrgUserServiceTest {
 
     @Test
     void authorizationIsCheckedBeforeRevealingDuplicateEmail() {
-        // Uma tentativa sem autorização deve falhar por permissão, não vazar
-        // se o e-mail já existe no sistema.
         CreateOrgUserRequest request = new CreateOrgUserRequest("Novo", "existente@padaria.com", "senha12345", RoleNames.ADMIN);
 
         assertThatThrownBy(() -> orgUserService.create(caller(RoleNames.SUPERVISOR), request))
@@ -151,8 +146,6 @@ class OrgUserServiceTest {
 
         verify(userRepository).findByOrganizationId(10L);
     }
-
-    // ---- updateRole ----
 
     @Test
     void updateRoleFailsWhenTargetNotFoundInCallerOrganization() {

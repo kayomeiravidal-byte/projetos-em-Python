@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Employee, Schedule, SchedulingRule, ShiftType
+from .models import Employee, Schedule, SchedulingRule, Service, ShiftType
 
 admin.site.site_header = "Sistema de Escalonamento"
 admin.site.site_title = "Escalonamento Admin"
@@ -23,7 +23,7 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 @admin.register(ShiftType)
 class ShiftTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "color_preview", "is_work_shift")
+    list_display = ("name", "color_preview", "is_work_shift", "start_time", "end_time")
     list_filter = ("is_work_shift",)
     search_fields = ("name",)
     ordering = ("name",)
@@ -36,6 +36,13 @@ class ShiftTypeAdmin(admin.ModelAdmin):
             obj.color,
             obj.color,
         )
+
+
+@admin.register(Service)
+class ServiceAdmin(admin.ModelAdmin):
+    list_display = ("name", "start_time", "end_time")
+    search_fields = ("name",)
+    ordering = ("name",)
 
 
 @admin.register(Schedule)

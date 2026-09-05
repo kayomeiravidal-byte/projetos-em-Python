@@ -10,7 +10,6 @@ def validate_hex_color(value):
 
 
 class Employee(models.Model):
-    # Não é ForeignKey: a organização mora no banco do auth-service.
     organization_id = models.BigIntegerField(null=True, blank=True, db_index=True)
     name = models.CharField(max_length=100)
     email = models.EmailField()
@@ -23,7 +22,6 @@ class Employee(models.Model):
         ordering = ["name"]
         verbose_name = "Funcionário"
         verbose_name_plural = "Funcionários"
-        # Único por organização, não globalmente.
         unique_together = ("organization_id", "email")
 
     def __str__(self):
@@ -35,11 +33,29 @@ class ShiftType(models.Model):
     name = models.CharField(max_length=50)
     color = models.CharField(max_length=7, default="#ffffff", validators=[validate_hex_color])
     is_work_shift = models.BooleanField(default=True)
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["name"]
         verbose_name = "Tipo de Turno"
         verbose_name_plural = "Tipos de Turno"
+        unique_together = ("organization_id", "name")
+
+    def __str__(self):
+        return self.name
+
+
+class Service(models.Model):
+    organization_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=100)
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Serviço"
+        verbose_name_plural = "Serviços"
         unique_together = ("organization_id", "name")
 
     def __str__(self):
